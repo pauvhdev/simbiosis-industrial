@@ -1,0 +1,17 @@
+# Normaliza los finales de línea a LF dentro del repositorio.
+#
+# El proyecto se desarrolla en Windows, donde git convierte a CRLF al hacer
+# checkout si no se le dice otra cosa. Sin esta regla, el primer commit desde
+# otra máquina reescribiría todos los ficheros y cualquier diff sería ilegible.
+* text=auto eol=lf
+
+# Ficheros que nunca deben tocarse.
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
+
+# El lockfile es generado: colapsa su diff en las revisiones.
+package-lock.json linguist-generated=true -diff

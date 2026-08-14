@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formato
+        run: npm run format:check
+
+      - name: Motor local de extracción
+        run: npm run check
+
+      # Prueba de integración real: aplica el esquema completo (pgvector, HNSW y
+      # match_listings) contra PGlite y mete los datos de ejemplo por el pipeline
+      # entero. No necesita ningún servicio externo ni ninguna API key: sin
+      # variables de entorno, el proyecto usa el driver embebido y el motor local.
+      - name: Esquema y datos de ejemplo
+        run: |
+          npm run db:migrate
+          npm run db:seed
+
+      - name: Build
+        run: npm run build
