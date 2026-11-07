@@ -41,11 +41,17 @@ exception when duplicate_object then null; end $$;
 -- 3. companies — datos identificativos. NUNCA se exponen en la capa pública.
 -- -----------------------------------------------------------------------------
 create table if not exists companies (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,          -- PRIVADO: sólo visible tras un match aceptado
-  email       text not null unique,   -- PRIVADO
-  created_at  timestamptz not null default now()
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,          -- PRIVADO: sólo visible tras un match aceptado
+  email         text not null unique,   -- PRIVADO, y es el identificador de acceso
+  -- Hash scrypt en formato 'scrypt$<salt>$<clave>'. Nullable a propósito: las
+  -- empresas que crea el seed no tienen credenciales y no deben poder entrar.
+  password_hash text,
+  created_at    timestamptz not null default now()
 );
+
+-- Para bases de datos creadas antes de que existiera la autenticación.
+alter table companies add column if not exists password_hash text;
 
 
 -- -----------------------------------------------------------------------------

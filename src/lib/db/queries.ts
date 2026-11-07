@@ -1,10 +1,12 @@
 import { getDb } from "./index";
 import { toVectorLiteral } from "../ai/embed";
 import type {
+  ContactRequestView,
   ListingType,
   MatchRow,
   PropertiesJson,
   PublicListing,
+  SessionCompany,
   Stats,
 } from "../types";
 
@@ -208,4 +210,205 @@ export async function statsOverview(): Promise<Stats> {
     demands: Number(rows[0]?.demands ?? 0),
     contacts: Number(rows[0]?.contacts ?? 0),
   };
+}
+
+// -----------------------------------------------------------------------------
+// Autenticación
+// -----------------------------------------------------------------------------
+
+export interface CompanyAuthRow {
+  id: string;
+  name: string;
+  email: string;
+  password_hash: string | null;
+}
+
+/**
+ * Alta de empresa. Devuelve null si el email ya está registrado.
+ *
+ * `do nothing` en vez de `do update`: una empresa existente NO debe poder ser
+ * pisada por quien acierte su email. Es la diferencia entre registrarse y
+ * apropiarse de una cuenta ajena.
+ */
+export async function registerCompany(
+  name: string,
+  email: string,
+  passwordHash: string,
+): Promise<{ id: string } | null> {
+  const db = await getDb();
+  const { rows } = await db.query<{ id: string }>(
+    `insert into companies (name, email, password_hash)
+     values ($1, $2, $3)
+     on conflict (email) do nothing
+     returning id`,
+    [name.trim(), email.trim().toLowerCase(), passwordHash],
+  );
+  return rows[0] ?? null;
+}
+
+export async function getCompanyAuthByEmail(
+  email: string,
+): Promise<CompanyAuthRow | null> {
+  const db = await getDb();
+  const { rows } = await db.query<CompanyAuthRow>(
+    `select id, name, email, password_hash from companies where email = $1`,
+    [email.trim().toLowerCase()],
+  );
+  return rows[0] ?? null;
+}
+
+export async function getSessionCompany(id: string): Promise<SessionCompany | null> {
+  const db = await getDb();
+  const { rows } = await db.query<SessionCompany>(
+    `select id, name, email from companies where id = $1`,
+    [id],
+  );
+  return rows[0] ?? null;
+}
+
+// -----------------------------------------------------------------------------
+// Propiedad de las publicaciones
+// -----------------------------------------------------------------------------
+
+/** Id de la empresa dueña de una publicación, o null si no existe. */
+export async function getListingOwner(listingId: string): Promise<string | null> {
+  const db = await getDb();
+  const { rows } = await db.query<{ company_id: string }>(
+    `select company_id from listings where id = $1`,
+    [listingId],
+  );
+  return rows[0]?.company_id ?? null;
+}
+
+export async function listListingsForCompany(
+  companyId: string,
+): Promise<PublicListing[]> {
+  const db = await getDb();
+  const { rows } = await db.query<PublicListing>(
+    `select ${PUBLIC_COLUMNS} from listings
+     where company_id = $1
+     order by created_at desc`,
+    [companyId],
+  );
+  return rows;
+}
+
+// -----------------------------------------------------------------------------
+// Bandeja de solicitudes de descruce
+// -----------------------------------------------------------------------------
+
+interface ContactRequestJoinRow {
+  id: string;
+  status: "PENDING" | "ACCEPTED" | "REJECTED";
+  similarity: number | null;
+  message: string | null;
+  created_at: string;
+  direction: "RECIBIDA" | "ENVIADA";
+  own_id: string;
+  own_title: string;
+  own_type: ListingType;
+  cp_id: string;
+  cp_title: string;
+  cp_type: ListingType;
+  cp_location: string | null;
+  cp_ler: string | null;
+  revealed_name: string | null;
+  revealed_email: string | null;
+}
+
+/**
+ * Todas las solicitudes en las que participa la empresa, en las dos direcciones.
+ *
+ * El `case` sobre `status` es lo que sostiene el doble consentimiento: mientras
+ * la solicitud no esté ACEPTADA, la consulta no proyecta el nombre ni el email
+ * de la contraparte, así que esos datos no llegan a salir de Postgres.
+ */
+export async function listContactRequestsForCompany(
+  companyId: string,
+): Promise<ContactRequestView[]> {
+  const db = await getDb();
+  const { rows } = await db.query<ContactRequestJoinRow>(
+    `select
+       cr.id,
+       cr.status,
+       cr.similarity,
+       cr.message,
+       cr.created_at,
+       case when tl.company_id = $1 then 'RECIBIDA' else 'ENVIADA' end as direction,
+
+       case when tl.company_id = $1 then tl.id    else fl.id    end as own_id,
+       case when tl.company_id = $1 then tl.title else fl.title end as own_title,
+       case when tl.company_id = $1 then tl.type  else fl.type  end as own_type,
+
+       case when tl.company_id = $1 then fl.id                 else tl.id                 end as cp_id,
+       case when tl.company_id = $1 then fl.title              else tl.title              end as cp_title,
+       case when tl.company_id = $1 then fl.type               else tl.type               end as cp_type,
+       case when tl.company_id = $1 then fl.anonymous_location else tl.anonymous_location end as cp_location,
+       case when tl.company_id = $1 then fl.ler_code           else tl.ler_code           end as cp_ler,
+
+       case when cr.status = 'ACCEPTED'
+            then case when tl.company_id = $1 then fc.name else tc.name end
+       end as revealed_name,
+       case when cr.status = 'ACCEPTED'
+            then case when tl.company_id = $1 then fc.email else tc.email end
+       end as revealed_email
+
+     from contact_requests cr
+     join listings  fl on fl.id = cr.from_listing_id
+     join listings  tl on tl.id = cr.to_listing_id
+     join companies fc on fc.id = fl.company_id
+     join companies tc on tc.id = tl.company_id
+     where fl.company_id = $1 or tl.company_id = $1
+     order by cr.created_at desc`,
+    [companyId],
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    direction: r.direction,
+    status: r.status,
+    similarity: r.similarity,
+    message: r.message,
+    created_at: r.created_at,
+    own: { id: r.own_id, title: r.own_title, type: r.own_type },
+    counterpart: {
+      id: r.cp_id,
+      title: r.cp_title,
+      type: r.cp_type,
+      anonymous_location: r.cp_location,
+      ler_code: r.cp_ler,
+    },
+    revealed:
+      r.revealed_name && r.revealed_email
+        ? { name: r.revealed_name, email: r.revealed_email }
+        : null,
+  }));
+}
+
+/**
+ * Acepta o rechaza una solicitud.
+ *
+ * La autorización va DENTRO del UPDATE, no en una comprobación previa: sólo se
+ * modifica la fila si `to_listing_id` pertenece a quien llama y sigue PENDING.
+ * Hacerlo en dos pasos (leer, comprobar, escribir) abriría una carrera entre la
+ * comprobación y la escritura.
+ */
+export async function decideContactRequest(
+  requestId: string,
+  companyId: string,
+  decision: "ACCEPT" | "REJECT",
+): Promise<{ id: string; status: string } | null> {
+  const db = await getDb();
+  const { rows } = await db.query<{ id: string; status: string }>(
+    `update contact_requests cr
+     set status = $3::contact_request_status
+     from listings tl
+     where cr.id = $1
+       and tl.id = cr.to_listing_id
+       and tl.company_id = $2
+       and cr.status = 'PENDING'
+     returning cr.id, cr.status::text as status`,
+    [requestId, companyId, decision === "ACCEPT" ? "ACCEPTED" : "REJECTED"],
+  );
+  return rows[0] ?? null;
 }

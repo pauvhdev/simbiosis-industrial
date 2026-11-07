@@ -1,13 +1,16 @@
 import { Database, EyeOff, Cpu } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { AppStatus, Stats } from "@/lib/types";
+import { SessionMenu } from "@/components/session-menu";
+import type { AppStatus, SessionCompany, Stats } from "@/lib/types";
 
 export function SiteHeader({
   status,
   stats,
+  company,
 }: {
   status: AppStatus | null;
   stats: Stats | null;
+  company: SessionCompany | null;
 }) {
   return (
     <header className="border-b border-[var(--border)] bg-[var(--card)]">
@@ -29,26 +32,30 @@ export function SiteHeader({
             </p>
           </div>
 
-          {stats ? (
-            <dl className="flex gap-5 text-right">
-              <div>
-                <dt className="text-xs text-[var(--muted-foreground)]">Ofertas</dt>
-                <dd className="tabular text-xl font-bold text-[var(--offer)]">
-                  {stats.offers}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--muted-foreground)]">Demandas</dt>
-                <dd className="tabular text-xl font-bold text-[var(--demand)]">
-                  {stats.demands}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--muted-foreground)]">Contactos</dt>
-                <dd className="tabular text-xl font-bold">{stats.contacts}</dd>
-              </div>
-            </dl>
-          ) : null}
+          <div className="flex flex-col items-end gap-3">
+            {company ? <SessionMenu company={company} /> : null}
+
+            {stats ? (
+              <dl className="flex gap-5 text-right">
+                <div>
+                  <dt className="text-xs text-[var(--muted-foreground)]">Ofertas</dt>
+                  <dd className="tabular text-xl font-bold text-[var(--offer)]">
+                    {stats.offers}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--muted-foreground)]">Demandas</dt>
+                  <dd className="tabular text-xl font-bold text-[var(--demand)]">
+                    {stats.demands}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--muted-foreground)]">Contactos</dt>
+                  <dd className="tabular text-xl font-bold">{stats.contacts}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
         </div>
 
         {/* Qué motor está activo en cada momento, para que no haya duda de si se

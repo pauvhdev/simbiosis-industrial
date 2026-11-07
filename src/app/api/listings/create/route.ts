@@ -5,7 +5,8 @@ import { buildEmbeddingText, embedText } from "@/lib/ai/embed";
 import { providerConfig } from "@/lib/ai/provider";
 import { extractPdfText } from "@/lib/pdf";
 import { anonymizeLocation, resolveLocation } from "@/lib/geo";
-import { insertListing, upsertCompany } from "@/lib/db/queries";
+import { insertListing } from "@/lib/db/queries";
+import { requireCompany } from "@/lib/auth/guard";
 
 // PGlite, pg y unpdf necesitan APIs de Node: este endpoint no puede correr en Edge.
 export const runtime = "nodejs";
@@ -16,7 +17,7 @@ const MAX_PDF_BYTES = 10 * 1024 * 1024;
  * POST /api/listings/create
  *
  * Acepta dos formatos:
- *   - application/json         -> { type, description, location, companyName, companyEmail }
+ *   - application/json         -> { type, description, location }
  *   - multipart/form-data      -> los mismos campos + `pdf` (ficha técnica opcional)
  *
  * Pipeline:
@@ -28,6 +29,11 @@ const MAX_PDF_BYTES = 10 * 1024 * 1024;
  */
 export async function POST(request: Request) {
   try {
+    // La publicación se atribuye a la empresa de la sesión, nunca a lo que
+    // venga en el cuerpo.
+    const auth = await requireCompany();
+    if ("response" in auth) return auth.response;
+
     const contentType = request.headers.get("content-type") ?? "";
 
     let rawInput: Record<string, unknown>;
@@ -41,8 +47,6 @@ export async function POST(request: Request) {
         type: form.get("type"),
         description: form.get("description") ?? "",
         location: form.get("location") ?? "",
-        companyName: form.get("companyName"),
-        companyEmail: form.get("companyEmail"),
       };
 
       const file = form.get("pdf");
@@ -129,10 +133,8 @@ export async function POST(request: Request) {
     const anonymousLocation = anonymizeLocation(input.location, geo);
 
     // --- 5. Persistencia ----------------------------------------------------
-    const companyId = await upsertCompany(input.companyName, input.companyEmail);
-
     const listing = await insertListing({
-      companyId,
+      companyId: auth.company.id,
       type: input.type,
       title: extraction.title,
       // Se guarda la ficha anonimizada, NO el texto original: si el usuario

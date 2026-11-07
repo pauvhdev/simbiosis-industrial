@@ -24,7 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ListingCard } from "@/components/listing-card";
 import { cn } from "@/lib/utils";
-import type { ListingType, PublicListing } from "@/lib/types";
+import type { ListingType, PublicListing, SessionCompany } from "@/lib/types";
 
 interface CreateResponse {
   listing: PublicListing;
@@ -43,15 +43,16 @@ interface CreateResponse {
 const EXAMPLE = `Generamos lactosuero dulce procedente de la elaboración de queso de pasta prensada. Volumen constante de 320 toneladas al mes. Humedad 93%, pH 6.4, proteína 0.9%. Se retira refrigerado en cisterna. Disponible todo el año.`;
 
 export function CreateListingForm({
+  company,
   onCreated,
 }: {
+  /** La empresa de la sesión: la publicación se le atribuye en el servidor. */
+  company: SessionCompany;
   onCreated?: (listing: PublicListing) => void;
 }) {
   const [type, setType] = useState<ListingType>("OFERTA");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [companyEmail, setCompanyEmail] = useState("");
   const [pdf, setPdf] = useState<File | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -72,8 +73,6 @@ export function CreateListingForm({
       body.set("type", type);
       body.set("description", description);
       body.set("location", location);
-      body.set("companyName", companyName);
-      body.set("companyEmail", companyEmail);
       if (pdf) body.set("pdf", pdf);
 
       const res = await fetch("/api/listings/create", { method: "POST", body });
@@ -217,37 +216,16 @@ export function CreateListingForm({
               </p>
             </div>
 
-            {/* Datos privados */}
+            {/* Datos privados: salen de la sesión, no del formulario. */}
             <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/50 p-4">
-              <p className="mb-3 inline-flex items-center gap-2 text-xs font-medium">
+              <p className="mb-2 inline-flex items-center gap-2 text-xs font-medium">
                 <ShieldCheck className="size-4 text-[var(--primary)]" aria-hidden />
-                Datos privados — no se publican nunca
+                Publicas como — no se publica nunca
               </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="companyName">Empresa</Label>
-                  <Input
-                    id="companyName"
-                    required
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="Razón social"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="companyEmail">Email de contacto</Label>
-                  <Input
-                    id="companyEmail"
-                    type="email"
-                    required
-                    value={companyEmail}
-                    onChange={(e) => setCompanyEmail(e.target.value)}
-                    placeholder="contacto@empresa.com"
-                  />
-                </div>
-              </div>
+              <p className="text-sm font-medium">{company.name}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">{company.email}</p>
               <p className="mt-3 text-xs text-[var(--muted-foreground)]">
-                Sólo se revelan si aceptas una solicitud de contacto.
+                Sólo se revela si aceptas una solicitud de contacto.
               </p>
             </div>
 

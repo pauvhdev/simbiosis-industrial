@@ -25,6 +25,10 @@ export interface ExploreHandle {
 interface ExploreMatchesProps {
   /** Catálogo renderizado en el servidor: el primer pintado ya trae datos. */
   initialListings: PublicListing[];
+  /** Explorar es público; pedir contacto exige sesión. */
+  authenticated: boolean;
+  /** Sólo se puede pedir contacto en nombre de una publicación propia. */
+  ownListingIds: string[];
   ref?: Ref<ExploreHandle>;
 }
 
@@ -36,7 +40,12 @@ interface ExploreMatchesProps {
  * evitar el render en cascada que marca `react-hooks/set-state-in-effect`, así
  * la primera pintura ya muestra el catálogo en vez de un spinner.
  */
-export function ExploreMatches({ initialListings, ref }: ExploreMatchesProps) {
+export function ExploreMatches({
+  initialListings,
+  authenticated,
+  ownListingIds,
+  ref,
+}: ExploreMatchesProps) {
   // Mientras sea null manda el servidor; al recargar en cliente pasa a mandar esto.
   const [refreshed, setRefreshed] = useState<PublicListing[] | null>(null);
   const [filter, setFilter] = useState<Filter>("TODAS");
@@ -97,6 +106,14 @@ export function ExploreMatches({ initialListings, ref }: ExploreMatchesProps) {
   }, []);
 
   const visible = listings.filter((l) => filter === "TODAS" || l.type === filter);
+
+  // El servidor lo rechaza igualmente (401/403); esto sólo evita que el botón
+  // invite a algo que va a fallar y explica por qué.
+  const requestBlockedReason = !authenticated
+    ? "Entra con tu cuenta para solicitar contacto."
+    : selected && !ownListingIds.includes(selected.id)
+      ? "Para pedir contacto, busca desde una de tus publicaciones."
+      : null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
@@ -216,7 +233,12 @@ export function ExploreMatches({ initialListings, ref }: ExploreMatchesProps) {
             ) : (
               <div className="space-y-3">
                 {matches.map((match) => (
-                  <MatchCard key={match.id} match={match} sourceListingId={selected.id} />
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    sourceListingId={selected.id}
+                    requestBlockedReason={requestBlockedReason}
+                  />
                 ))}
               </div>
             )}

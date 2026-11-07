@@ -18,9 +18,15 @@ function toneFor(affinity: number) {
 interface MatchCardProps {
   match: ScoredMatch;
   sourceListingId: string;
+  /** Si no es null, el botón se desactiva y se muestra este motivo. */
+  requestBlockedReason: string | null;
 }
 
-export function MatchCard({ match, sourceListingId }: MatchCardProps) {
+export function MatchCard({
+  match,
+  sourceListingId,
+  requestBlockedReason,
+}: MatchCardProps) {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -126,7 +132,10 @@ export function MatchCard({ match, sourceListingId }: MatchCardProps) {
           size="sm"
           variant={state === "sent" ? "secondary" : "default"}
           onClick={requestContact}
-          disabled={state === "sending" || state === "sent"}
+          disabled={
+            requestBlockedReason !== null || state === "sending" || state === "sent"
+          }
+          title={requestBlockedReason ?? undefined}
         >
           {state === "sending" ? (
             <>
@@ -143,6 +152,12 @@ export function MatchCard({ match, sourceListingId }: MatchCardProps) {
           )}
         </Button>
       </div>
+
+      {requestBlockedReason && state === "idle" ? (
+        <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+          {requestBlockedReason}
+        </p>
+      ) : null}
 
       {feedback ? (
         <p

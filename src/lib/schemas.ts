@@ -105,10 +105,9 @@ export const CreateListingInputSchema = z.object({
   description: z.string().max(20_000).optional().default(""),
   /** Zona industrial aproximada. Ej: "Polígono Industrial, Zaragoza". */
   location: z.string().max(200).optional().default(""),
-  /** Datos privados de la empresa: nunca salen en la capa pública. */
-  companyName: z.string().min(1).max(200),
-  companyEmail: z.email().max(200),
 });
+// La empresa ya no viaja en el cuerpo: sale de la sesión. Aceptarla por
+// parámetro dejaba publicar en nombre de cualquiera con sólo saber su email.
 
 export type CreateListingInput = z.infer<typeof CreateListingInputSchema>;
 
@@ -117,4 +116,34 @@ export const ContactRequestInputSchema = z.object({
   toListingId: z.uuid(),
   similarity: z.number().min(0).max(1).optional(),
   message: z.string().max(2000).optional().default(""),
+});
+
+// -----------------------------------------------------------------------------
+// Autenticación
+// -----------------------------------------------------------------------------
+
+/**
+ * 10 caracteres de mínimo en vez de los 8 habituales, y sin exigir mayúsculas ni
+ * símbolos: las reglas de composición empujan a la gente a "Password1!" mientras
+ * que la longitud es lo que realmente aporta entropía. Es también lo que
+ * recomienda el NIST desde SP 800-63B.
+ */
+const passwordField = z
+  .string()
+  .min(10, "La contraseña debe tener al menos 10 caracteres.")
+  .max(200, "La contraseña es demasiado larga.");
+
+export const RegisterInputSchema = z.object({
+  companyName: z.string().trim().min(1, "Indica el nombre de la empresa.").max(200),
+  email: z.email("El email no es válido.").max(200),
+  password: passwordField,
+});
+
+export const LoginInputSchema = z.object({
+  email: z.email("El email no es válido.").max(200),
+  password: z.string().min(1, "Indica la contraseña.").max(200),
+});
+
+export const ContactDecisionSchema = z.object({
+  decision: z.enum(["ACCEPT", "REJECT"]),
 });

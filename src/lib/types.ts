@@ -55,3 +55,39 @@ export interface AppStatus {
   db: { driver: string; schemaReady: boolean };
   ai: { id: string; label: string; cost: string };
 }
+
+// -----------------------------------------------------------------------------
+// Autenticación
+// -----------------------------------------------------------------------------
+
+/** Empresa autenticada. Es información privada: sólo la ve su propio dueño. */
+export interface SessionCompany {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/** Solicitud de descruce enriquecida con el contexto de las dos publicaciones. */
+export interface ContactRequestView {
+  id: string;
+  direction: "RECIBIDA" | "ENVIADA";
+  status: "PENDING" | "ACCEPTED" | "REJECTED";
+  similarity: number | null;
+  message: string | null;
+  created_at: string;
+  /** Publicación propia implicada en la solicitud. */
+  own: { id: string; title: string; type: ListingType };
+  /** Publicación de la contraparte — anónima mientras no se acepte. */
+  counterpart: {
+    id: string;
+    title: string;
+    type: ListingType;
+    anonymous_location: string | null;
+    ler_code: string | null;
+  };
+  /**
+   * Datos de contacto reales. La consulta sólo los proyecta cuando
+   * status = 'ACCEPTED'; en cualquier otro caso llega null.
+   */
+  revealed: { name: string; email: string } | null;
+}

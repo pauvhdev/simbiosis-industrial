@@ -1,10 +1,23 @@
 import { AlertTriangle } from "lucide-react";
 import { Dashboard } from "@/components/dashboard";
 import { SiteHeader } from "@/components/site-header";
-import { listListings, statsOverview } from "@/lib/db/queries";
+import {
+  getSessionCompany,
+  listContactRequestsForCompany,
+  listListings,
+  listListingsForCompany,
+  statsOverview,
+} from "@/lib/db/queries";
+import { getSessionCompanyId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { providerConfig, resolveProviderId } from "@/lib/ai/provider";
-import type { AppStatus, PublicListing, Stats } from "@/lib/types";
+import type {
+  AppStatus,
+  ContactRequestView,
+  PublicListing,
+  SessionCompany,
+  Stats,
+} from "@/lib/types";
 
 // Sin esto, `next build` intentaría prerenderizar la página y abriría PGlite en
 // tiempo de compilación.
@@ -14,6 +27,9 @@ async function loadInitialData(): Promise<{
   status: AppStatus | null;
   stats: Stats | null;
   listings: PublicListing[];
+  company: SessionCompany | null;
+  ownListingIds: string[];
+  requests: ContactRequestView[];
   error: string | null;
 }> {
   const provider = providerConfig(resolveProviderId());
@@ -27,6 +43,18 @@ async function loadInitialData(): Promise<{
       listListings({ limit: 100 }),
     ]);
 
+    // La sesión se resuelve en el servidor y baja como prop: así el cliente no
+    // necesita un efecto de carga para saber quién es ni cuáles son sus
+    // publicaciones, y la primera pintura ya sale correcta.
+    const companyId = await getSessionCompanyId();
+    const company = companyId ? await getSessionCompany(companyId) : null;
+    const [ownListingIds, requests] = company
+      ? await Promise.all([
+          listListingsForCompany(company.id).then((rows) => rows.map((l) => l.id)),
+          listContactRequestsForCompany(company.id),
+        ])
+      : [[], []];
+
     return {
       status: {
         db: { driver: db.driver, schemaReady: true },
@@ -34,6 +62,9 @@ async function loadInitialData(): Promise<{
       },
       stats,
       listings,
+      company,
+      ownListingIds,
+      requests,
       error: null,
     };
   } catch (error) {
@@ -46,17 +77,21 @@ async function loadInitialData(): Promise<{
       },
       stats: null,
       listings: [],
+      company: null,
+      ownListingIds: [],
+      requests: [],
       error: error instanceof Error ? error.message : String(error),
     };
   }
 }
 
 export default async function HomePage() {
-  const { status, stats, listings, error } = await loadInitialData();
+  const { status, stats, listings, company, ownListingIds, requests, error } =
+    await loadInitialData();
 
   return (
     <div className="min-h-screen">
-      <SiteHeader status={status} stats={stats} />
+      <SiteHeader status={status} stats={stats} company={company} />
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         {error ? (
@@ -75,7 +110,12 @@ export default async function HomePage() {
           </div>
         ) : null}
 
-        <Dashboard initialListings={listings} />
+        <Dashboard
+          initialListings={listings}
+          company={company}
+          ownListingIds={ownListingIds}
+          initialRequests={requests}
+        />
 
         <footer className="mt-12 border-t border-[var(--border)] pt-6 text-xs text-[var(--muted-foreground)]">
           <p>
